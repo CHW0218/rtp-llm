@@ -1,9 +1,6 @@
 *~
 *.o
-*.mo
-*build*/
 __pycache__/
-.doctrees/
 .vscode
 .idea
 ./translation
@@ -55,3 +52,10 @@ normal_profiler*.json
 core-*
 
 .specstory
+
+
+*.mo
+*build*/
+.doctrees/
+node_modules/
+docs/index/dist/
