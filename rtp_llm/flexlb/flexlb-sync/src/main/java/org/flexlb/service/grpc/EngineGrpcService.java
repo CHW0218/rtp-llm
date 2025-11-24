@@ -3,10 +3,8 @@ package org.flexlb.service.grpc;
 import lombok.Getter;
 import org.flexlb.dao.master.WorkerStatus;
 import org.flexlb.dao.route.RoleType;
-import org.flexlb.domain.balance.WhaleMasterConfig;
 import org.flexlb.engine.grpc.EngineGrpcClient;
 import org.flexlb.engine.grpc.EngineRpcService;
-import org.flexlb.service.config.ConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,10 +19,8 @@ public class EngineGrpcService {
 
     @Getter
     private final EngineGrpcClient engineGrpcClient;
-    private final WhaleMasterConfig whaleMasterConfig;
 
-    public EngineGrpcService(ConfigService configService, EngineGrpcClient engineGrpcClient) {
-        this.whaleMasterConfig = configService.loadBalanceConfig();
+    public EngineGrpcService(EngineGrpcClient engineGrpcClient) {
         this.engineGrpcClient = engineGrpcClient;
     }
 
@@ -58,25 +54,18 @@ public class EngineGrpcService {
      * @return CompletableFuture of CacheStatusPB
      */
     public EngineRpcService.CacheStatusPB getCacheStatus(
-        String ip, int grpcPort, WorkerStatus workerStatus, long cacheVersion, long requestTimeoutMs) {
+            String ip, int grpcPort, WorkerStatus workerStatus, long cacheVersion, long requestTimeoutMs) {
 
         if (engineGrpcClient == null) {
             throw new RuntimeException("EngineGrpcService not initialized");
         }
-        boolean isPrefill = RoleType.PREFILL.matches(workerStatus.getRole());
+        // 只在 PD 分离情况下的 Prefill 节点和非 PD 分离情况下需要 cacheKeys
+        boolean needCacheKeys = RoleType.PREFILL.matches(workerStatus.getRole()) || RoleType.PDFUSION.matches(workerStatus.getRole());
         EngineRpcService.CacheVersionPB request = EngineRpcService.CacheVersionPB.newBuilder()
                 .setLatestCacheVersion((int) cacheVersion)
-                .setNeedCacheKeys(isPrefill)
+                .setNeedCacheKeys(needCacheKeys)
                 .build();
-        logger.info("Get cache status Request: {}, cacheVersion: {}, needCacheKeys: {}", ip, cacheVersion, isPrefill);
+        logger.info("Get cache status Request: {}, cacheVersion: {}, needCacheKeys: {}", ip, cacheVersion, needCacheKeys);
         return engineGrpcClient.getCacheStatus(ip, grpcPort, request, requestTimeoutMs);
-    }
-
-    public boolean isEngineStatusEnabled() {
-        return whaleMasterConfig.isEnableGrpcEngineStatus();
-    }
-
-    public boolean isCacheStatusEnabled() {
-        return whaleMasterConfig.isEnableGrpcCacheStatus();
     }
 }

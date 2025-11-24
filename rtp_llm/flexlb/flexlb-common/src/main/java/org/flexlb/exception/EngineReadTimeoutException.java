@@ -2,18 +2,7 @@ package org.flexlb.exception;
 
 import org.flexlb.enums.StatusEnum;
 
-@SuppressWarnings("unused")
-public class EngineReadTimeoutException extends WhaleException {
-
-    @Override
-    public boolean isSimpleException() {
-        return true;
-    }
-
-    @Override
-    public boolean isUserException() {
-        return true;
-    }
+public class EngineReadTimeoutException extends FlexLBException {
 
     public EngineReadTimeoutException(int code, String name, String message, Throwable cause) {
         super(code, name, message, cause);

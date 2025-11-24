@@ -17,12 +17,11 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.flexlb.enums.StatusEnum;
-import org.flexlb.exception.WhaleException;
+import org.flexlb.exception.FlexLBException;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
 
 @Slf4j
 public class JsonUtils {
@@ -63,14 +62,14 @@ public class JsonUtils {
      * @param clazz The expected java object type.
      * @return The java object.
      */
-    public static <I, T> T toObject(I input, Class<T> clazz) throws WhaleException {
+    public static <I, T> T toObject(I input, Class<T> clazz) throws FlexLBException {
         ObjectReader reader = MAPPER.readerFor(clazz);
         try {
             T res;
-            if (input instanceof String) {
-                res = reader.readValue((String) input);
-            } else if (input instanceof byte[]) {
-                res = reader.readValue((byte[]) input);
+            if (input instanceof String string) {
+                res = reader.readValue(string);
+            } else if (input instanceof byte[] bytes) {
+                res = reader.readValue(bytes);
             } else {
                 throw new IllegalArgumentException("Unsupported input type: " + input.getClass());
             }
@@ -90,7 +89,7 @@ public class JsonUtils {
      * @param clazz The expected java object type.
      * @return The java object.
      */
-    public static <T> T toObject(String text, Class<T> clazz) throws WhaleException {
+    public static <T> T toObject(String text, Class<T> clazz) throws FlexLBException {
         ObjectReader reader = MAPPER.readerFor(clazz);
         try {
             T res = reader.readValue(text);
@@ -119,7 +118,7 @@ public class JsonUtils {
      * @param clazz   The expected java object type.
      * @return The java object.
      */
-    public static <T> T toObject(byte[] content, Class<T> clazz) throws WhaleException {
+    public static <T> T toObject(byte[] content, Class<T> clazz) throws FlexLBException {
         ObjectReader reader = MAPPER.readerFor(clazz);
         try {
             return reader.readValue(content);
@@ -135,7 +134,7 @@ public class JsonUtils {
      * @param type The type reference.
      * @return The java object.
      */
-    public static <T> T toObject(String text, TypeReference<T> type) throws WhaleException {
+    public static <T> T toObject(String text, TypeReference<T> type) throws FlexLBException {
         ObjectReader reader = MAPPER.readerFor(type);
         try {
             return reader.readValue(text);
@@ -160,7 +159,7 @@ public class JsonUtils {
      * @param clazz The java type.
      * @return The Java object.
      */
-    public static <T> T toObject(JsonNode tree, Class<T> clazz) throws WhaleException {
+    public static <T> T toObject(JsonNode tree, Class<T> clazz) throws FlexLBException {
         ObjectReader reader = MAPPER.readerFor(clazz);
         try {
             return reader.readValue(tree);
@@ -169,7 +168,7 @@ public class JsonUtils {
         }
     }
 
-    public static <T> Map<String, T> toMap(String text, Class<T> valueType) throws WhaleException {
+    public static <T> Map<String, T> toMap(String text, Class<T> valueType) throws FlexLBException {
         MapType type = MAPPER.getTypeFactory().constructMapType(Map.class, String.class, valueType);
         ObjectReader reader = MAPPER.readerFor(type);
         try {
@@ -179,7 +178,7 @@ public class JsonUtils {
         }
     }
 
-    public static <T> List<T> toList(String text, Class<T> valueType) throws WhaleException {
+    public static <T> List<T> toList(String text, Class<T> valueType) throws FlexLBException {
         CollectionType type = MAPPER.getTypeFactory().constructCollectionType(List.class, valueType);
         ObjectReader reader = MAPPER.readerFor(type);
         try {
@@ -194,9 +193,9 @@ public class JsonUtils {
      *
      * @param object The object.
      * @return The json string.
-     * @throws WhaleException Failed to convert.
+     * @throws FlexLBException Failed to convert.
      */
-    public static String toString(Object object) throws WhaleException {
+    public static String toString(Object object) throws FlexLBException {
         try {
             return WRITER.writeValueAsString(object);
         } catch (JsonProcessingException error) {
@@ -254,7 +253,7 @@ public class JsonUtils {
      * @param text The json string.
      * @return The json node.
      */
-    public static JsonNode toTreeNode(String text) throws WhaleException {
+    public static JsonNode toTreeNode(String text) throws FlexLBException {
         try {
             return READER.readTree(text);
         } catch (JsonProcessingException error) {

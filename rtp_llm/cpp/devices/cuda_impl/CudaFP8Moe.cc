@@ -68,7 +68,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
     const auto   moe_inter_size       = moe_conf.moe_inter_padding_size;
     const size_t num_experts_per_node = num_experts / moe_conf.ep_size;
     const auto   src_row_to_dst       = allocateBuffer({DataType::TYPE_INT32, {top_k, token_num}}, {"moe_src_to_dst"});
-    cudaMemsetAsync(src_row_to_dst->data(), -1, src_row_to_dst->sizeBytes(), stream_);
+    check_cuda_value(cudaMemsetAsync(src_row_to_dst->data(), -1, src_row_to_dst->sizeBytes(), stream_));
 
     const auto source_rows      = allocateBuffer({DataType::TYPE_INT32, {token_num, top_k}}, {"source_rows"});
     const auto permuted_experts = allocateBuffer({DataType::TYPE_INT32, {top_k, token_num}}, {"permuted_experts"});
@@ -94,8 +94,9 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
                            expert_for_source_row->data<int>(),
                            token_num,
                            top_k,
-                           num_experts_per_node * moe_conf.ep_rank,
+                           start_expert,
                            stream_);
+        check_cuda_error();
     }
 
     trt::genSourceRow(expert_for_source_row->data<int>(),
@@ -107,6 +108,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
                       end_expert,
                       stream_);
     printBufferData(*source_rows, "source_rows");
+    check_cuda_error();
     trt::sortAndScanSoftmaxOutput(expert_for_source_row->data<int>(),
                                   source_rows->data<int>(),
                                   permuted_experts->data<int>(),
@@ -129,18 +131,37 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
     size_t     total_padding_num                  = 0;
     const auto permuted_src_row_to_dst =
         allocateBuffer({DataType::TYPE_INT32, {token_num * top_k}, AllocationType::HOST}, {"permuted_rows"});
-    int*      permuted_src_row_to_dst_ptr = permuted_src_row_to_dst->data<int>();
-    BufferPtr padding_group_index         = allocateBuffer(
-        {DataType::TYPE_INT32, {pad_to_multiple_of_128(token_num) * num_experts_per_node}, AllocationType::HOST},
-        {"padding_group_index"});
+    int* permuted_src_row_to_dst_ptr = permuted_src_row_to_dst->data<int>();
+    // First calculate padding with 128 alignment to check sparsity
+    size_t total_padding_num_128 = 0;
+    for (int i = 0; i < num_experts_per_node; ++i) {
+        size_t num_row_now  = expert_first_token_offset_host_ptr[i + 1] - expert_first_token_offset_host_ptr[i];
+        size_t padding_size = pad_to_multiple_of_128(num_row_now);
+        total_padding_num_128 += padding_size;
+    }
+    // Decide padding strategy based on sparsity
+    bool use_64_padding = (float(total_padding_num_128) / (token_num * top_k)) > 1.5;
+    // Allocate buffer based on chosen strategy
+    BufferPtr padding_group_index;
+    if (use_64_padding) {
+        padding_group_index = allocateBuffer(
+            {DataType::TYPE_INT32, {pad_to_multiple_of_64(token_num) * num_experts_per_node}, AllocationType::HOST},
+            {"padding_group_index"});
+    } else {
+        padding_group_index = allocateBuffer(
+            {DataType::TYPE_INT32, {pad_to_multiple_of_128(token_num) * num_experts_per_node}, AllocationType::HOST},
+            {"padding_group_index"});
+    }
     int* padding_group_index_ptr = padding_group_index->data<int>();
+    // Fill data with chosen padding strategy
+    total_padding_num = 0;
     for (int i = 0; i < num_experts_per_node; ++i) {
         size_t src_row_offset = expert_first_token_offset_host_ptr[i];
         size_t num_row_now    = expert_first_token_offset_host_ptr[i + 1] - expert_first_token_offset_host_ptr[i];
         for (int j = 0; j < num_row_now; ++j) {
             permuted_src_row_to_dst_ptr[src_row_offset + j] = total_padding_num + j;
         }
-        size_t padding_size = pad_to_multiple_of_128(num_row_now);
+        size_t padding_size = use_64_padding ? pad_to_multiple_of_64(num_row_now) : pad_to_multiple_of_128(num_row_now);
         for (int j = 0; j < padding_size; ++j) {
             padding_group_index_ptr[total_padding_num + j] = i;
         }
@@ -148,7 +169,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
     }
     BufferPtr permuted_src_row_to_dst_device = clone({*permuted_src_row_to_dst});
     BufferPtr padding_group_index_device     = clone({*padding_group_index});
-    cudaStreamSynchronize(stream_);
+    check_cuda_value(cudaStreamSynchronize(stream_));
     int64_t   dest_num_rows = expert_first_token_offset_host_ptr[num_experts_per_node];
     BufferPtr permuted_padding_input =
         allocateBuffer({DataType::TYPE_FP8_E4M3, {total_padding_num, hidden_size}}, {"permuted_padding_input"});
@@ -198,6 +219,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
                                              *fc1_result,
                                              padding_group_index_device->view(0, total_padding_num),
                                              init_params_.user_deep_gemm_num_sm,
+                                             use_64_padding,
                                              stream_);
     printBufferData(*fc1_result, "fc1_result");
     check_cuda_error();
@@ -230,6 +252,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Contiguous(const FfnLayerParams& params, con
                                              *fc2_result,
                                              padding_group_index_device->view(0, total_padding_num),
                                              init_params_.user_deep_gemm_num_sm,
+                                             use_64_padding,
                                              stream_);
     printBufferData(*fc2_result, "fc2_result");
     check_cuda_error();
@@ -300,7 +323,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Masked(const FfnLayerParams& params, const M
     const auto   moe_inter_size       = moe_conf.moe_inter_padding_size;
     const size_t num_experts_per_node = num_experts / moe_conf.ep_size;
     const auto   src_row_to_dst       = allocateBuffer({DataType::TYPE_INT32, {top_k, token_num}}, {"moe_src_to_dst"});
-    cudaMemsetAsync(src_row_to_dst->data(), -1, src_row_to_dst->sizeBytes(), stream_);
+    check_cuda_value(cudaMemsetAsync(src_row_to_dst->data(), -1, src_row_to_dst->sizeBytes(), stream_));
 
     const auto source_rows      = allocateBuffer({DataType::TYPE_INT32, {token_num, top_k}}, {"source_rows"});
     const auto permuted_experts = allocateBuffer({DataType::TYPE_INT32, {top_k, token_num}}, {"permuted_experts"});
@@ -326,8 +349,9 @@ FfnLayerOutput CudaDevice::moeFfnFp8Masked(const FfnLayerParams& params, const M
                            expert_for_source_row->data<int>(),
                            token_num,
                            top_k,
-                           num_experts_per_node * moe_conf.ep_rank,
+                           start_expert,
                            stream_);
+        check_cuda_error();
     }
 
     trt::genSourceRow(expert_for_source_row->data<int>(),
@@ -339,6 +363,7 @@ FfnLayerOutput CudaDevice::moeFfnFp8Masked(const FfnLayerParams& params, const M
                       end_expert,
                       stream_);
     printBufferData(*source_rows, "source_rows");
+    check_cuda_error();
     trt::sortAndScanSoftmaxOutput(expert_for_source_row->data<int>(),
                                   source_rows->data<int>(),
                                   permuted_experts->data<int>(),

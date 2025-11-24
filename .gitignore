@@ -24,7 +24,6 @@ generated-config.yml
 /.vscode
 *.iml
 *vents.out.tfevents*
-.idea
 .DS_Store
 __pycache__
 target
@@ -57,13 +56,13 @@ core-*
 # Debug and build output files
 out
 err
-*.sh
 test_out
 test_err
 errcp
 
 # Model loader debug tests
 rtp_llm/model_loader/test/
+/rtp_llm/flexlb/artifacts/
 
 # Additional debug files
 git

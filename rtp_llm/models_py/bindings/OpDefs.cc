@@ -10,15 +10,18 @@ void registerPyOpDefs(pybind11::module& m) {
         .def_readonly("paged_kv_last_page_len", &MlaParams::paged_kv_last_page_len)
         .def_readonly("kvlen", &MlaParams::kvlen)
         .def_readonly("page_indice", &MlaParams::page_indice)
-        .def_readonly("page_indptr", &MlaParams::page_indptr)
-        .def_readonly("qo_indptr", &MlaParams::qo_indptr);
+        .def_readonly("reuse_cache_page_indice", &MlaParams::reuse_cache_page_indice)
+        .def_readonly("decode_page_indptr", &MlaParams::decode_page_indptr)
+        .def_readonly("prefill_page_indptr", &MlaParams::prefill_page_indptr)
+        .def_readonly("qo_indptr", &MlaParams::qo_indptr)
+        .def_readonly("batch_reuse_info_vec", &MlaParams::batch_reuse_info_vec);
 
     pybind11::class_<KVCache>(m, "KVCache")
         .def(pybind11::init<>())
         .def_readwrite("k_cache_base", &KVCache::k_cache_base, "Key cache base tensor")
-        .def_readonly("v_cache_base", &KVCache::v_cache_base, "Value cache base tensor")
-        .def_readonly("k_scale_base", &KVCache::k_scale_base, "Key cache scale tensor")
-        .def_readonly("v_scale_base", &KVCache::v_scale_base, "Value cache scale tensor")
+        .def_readwrite("v_cache_base", &KVCache::v_cache_base, "Value cache base tensor")
+        .def_readwrite("k_scale_base", &KVCache::k_scale_base, "Key cache scale tensor")
+        .def_readwrite("v_scale_base", &KVCache::v_scale_base, "Value cache scale tensor")
         .def_readonly("layer_id", &KVCache::layer_id, "kv cache layer id")
         .def("get_layer_cache", &KVCache::getLayerCache);
 
@@ -27,6 +30,11 @@ void registerPyOpDefs(pybind11::module& m) {
         .def_readonly("kv_cache", &PyModelInitResources::kv_cache, "kv cache");
 
     pybind11::class_<caffe2::TypeMeta>(m, "TypeMeta").def(pybind11::init<>());
+
+    m.def(
+        "get_typemeta",
+        [](const torch::Tensor& tensor) { return torch::scalarTypeToTypeMeta(tensor.scalar_type()); },
+        "Convert tensor dtype to TypeMeta");
 
     pybind11::class_<PyCacheStoreInputs>(m, "PyCacheStoreInputs").def(pybind11::init<>());
     pybind11::class_<PyCaptureMetaData>(m, "PyCaptureMetaData").def(pybind11::init<>());
@@ -57,14 +65,15 @@ void registerPyOpDefs(pybind11::module& m) {
         .def_readwrite("prefix_lengths", &PyAttentionInputs::prefix_lengths)
         .def_readwrite("sequence_lengths", &PyAttentionInputs::sequence_lengths)
         .def_readwrite("input_lengths", &PyAttentionInputs::input_lengths)
-        .def_readonly("cu_seqlens", &PyAttentionInputs::cu_seqlens)
+        .def_readwrite("cu_seqlens", &PyAttentionInputs::cu_seqlens)
         .def_readwrite("kv_cache_block_id_host", &PyAttentionInputs::kv_cache_block_id_host)
-        .def_readonly("kv_cache_block_id_device", &PyAttentionInputs::kv_cache_block_id_device)
-        .def_readonly("dtype", &PyAttentionInputs::dtype)
-        .def_readonly("kv_block_offset", &PyAttentionInputs::kv_block_offset)
-        .def_readonly("cu_seqlens", &PyAttentionInputs::cu_seqlens)
-        .def_readonly("padding_offset", &PyAttentionInputs::padding_offset)
-        .def_readonly("cache_store_inputs", &PyAttentionInputs::cache_store_inputs);
+        .def_readwrite("kv_cache_block_id_device", &PyAttentionInputs::kv_cache_block_id_device)
+        .def_readwrite("dtype", &PyAttentionInputs::dtype)
+        .def_readwrite("kv_block_offset", &PyAttentionInputs::kv_block_offset)
+        .def_readwrite("cu_seqlens", &PyAttentionInputs::cu_seqlens)
+        .def_readwrite("padding_offset", &PyAttentionInputs::padding_offset)
+        .def_readwrite("cache_store_inputs", &PyAttentionInputs::cache_store_inputs)
+        .def("__repr__", [](const PyAttentionInputs& self) { return "PyAttentionInputs"; });
 
     pybind11::class_<BertEmbeddingInputs>(m, "BertEmbeddingInputs")
         .def(pybind11::init<>())
@@ -81,7 +90,8 @@ void registerPyOpDefs(pybind11::module& m) {
         .def_readwrite(
             "token_type_embedding", &BertEmbeddingInputs::token_type_embedding, "Token type embedding tensor")
         .def_readwrite(
-            "input_embedding_scalar", &BertEmbeddingInputs::input_embedding_scalar, "Input embedding scalar value");
+            "input_embedding_scalar", &BertEmbeddingInputs::input_embedding_scalar, "Input embedding scalar value")
+        .def("__repr__", [](const BertEmbeddingInputs& self) { return "BertEmbeddingInputs"; });
 
     pybind11::class_<PyModelInputs>(m, "PyModelInputs")
         .def(pybind11::init<>())

@@ -1,6 +1,6 @@
 package org.flexlb.httpserver;
 
-import org.flexlb.enums.LogLevel;
+import lombok.NoArgsConstructor;
 import org.flexlb.listener.OnlineListener;
 import org.flexlb.utils.LoggingUtils;
 import org.springframework.context.annotation.Bean;
@@ -22,12 +22,10 @@ import static org.springframework.web.reactive.function.server.RouterFunctions.r
  * date: 2025/3/31
  */
 @Component
+@NoArgsConstructor
 public class AppStateHookServer {
 
     private final CopyOnWriteArrayList<OnlineListener> onlineListeners = new CopyOnWriteArrayList<>();
-
-    public AppStateHookServer() {
-    }
 
     @Bean
     public RouterFunction<ServerResponse> appStateHook() {

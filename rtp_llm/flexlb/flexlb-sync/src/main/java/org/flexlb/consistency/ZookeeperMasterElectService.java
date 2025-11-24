@@ -1,19 +1,9 @@
 package org.flexlb.consistency;
 
-import java.net.InetAddress;
-import java.net.URI;
-import java.net.UnknownHostException;
-import java.time.Duration;
-import java.util.Collection;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-import com.alibaba.fastjson.JSON;
-import com.alibaba.metrics.StringUtils;
-
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.recipes.leader.CancelLeadershipException;
@@ -28,11 +18,21 @@ import org.flexlb.domain.consistency.MasterChangeNotifyReq;
 import org.flexlb.domain.consistency.MasterChangeNotifyResp;
 import org.flexlb.service.monitor.EngineHealthReporter;
 import org.flexlb.transport.GeneralHttpNettyService;
+import org.flexlb.util.JsonUtils;
 import org.flexlb.utils.LoggingUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.Collection;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.flexlb.consistency.LBStatusConsistencyService.MASTER_CHANGE_NOTIFY_PATH;
 
@@ -62,9 +62,10 @@ public class ZookeeperMasterElectService implements MasterElectService, LeaderSe
     private CuratorFramework client;
     @Setter(AccessLevel.PACKAGE)
     private LeaderSelector leaderSelector;
-    private volatile boolean isMaster = false;
-    private volatile boolean stopCompleteForLeader = false;
-    private volatile String masterHost = null;
+    @Getter
+    private volatile boolean isMaster;
+    private volatile boolean stopCompleteForLeader;
+    private volatile String masterHost;
 
     private final AtomicReference<CountDownLatch> leaderCloseLatchRef = new AtomicReference<>();
 
@@ -111,9 +112,9 @@ public class ZookeeperMasterElectService implements MasterElectService, LeaderSe
         String configStr = System.getenv("WHALE_SYNC_LB_CONSISTENCY_CONFIG");
         LOGGER.warn("WHALE_SYNC_LB_CONSISTENCY_CONFIG = {}.", configStr);
 
-        lbConsistencyConfig = (configStr == null)
+        lbConsistencyConfig = configStr == null
                 ? new LBConsistencyConfig()
-                : JSON.parseObject(configStr, LBConsistencyConfig.class);
+                : JsonUtils.toObject(configStr, LBConsistencyConfig.class);
     }
 
     private void initializeZookeeperClient() {
@@ -140,7 +141,7 @@ public class ZookeeperMasterElectService implements MasterElectService, LeaderSe
     }
 
     private void scheduleMasterUpdateTask() {
-        LBStatusConsistencyService.scheduledExecutorService.scheduleWithFixedDelay(
+        LBStatusConsistencyService.SCHEDULED_EXECUTOR_SERVICE.scheduleWithFixedDelay(
                 this::updateLatestMaster, 0, 5, TimeUnit.SECONDS);
     }
 
@@ -156,7 +157,6 @@ public class ZookeeperMasterElectService implements MasterElectService, LeaderSe
         LOGGER.warn("ZKMasterElector roleId:{} currentHost:{} doStart finished.", roleId, ip);
     }
 
-
     /**
      * 关闭选举选择器
      */
@@ -171,11 +171,6 @@ public class ZookeeperMasterElectService implements MasterElectService, LeaderSe
         closeLeaderSelector();
         trySignalCloseLatch();
         LOGGER.warn("ZKMasterElector roleId:{} currentHost:{} offline finished.", roleId, ip);
-    }
-
-    @Override
-    public boolean isMaster() {
-        return isMaster;
     }
 
     @Override

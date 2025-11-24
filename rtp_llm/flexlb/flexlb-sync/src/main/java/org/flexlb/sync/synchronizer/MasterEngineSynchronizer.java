@@ -1,15 +1,6 @@
 package org.flexlb.sync.synchronizer;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.LongAdder;
-
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
-
+import com.fasterxml.jackson.core.type.TypeReference;
 import io.micrometer.core.instrument.util.NamedThreadFactory;
 import org.apache.commons.lang3.StringUtils;
 import org.flexlb.cache.service.CacheAwareService;
@@ -23,10 +14,17 @@ import org.flexlb.service.monitor.EngineHealthReporter;
 import org.flexlb.sync.runner.EngineSyncRunner;
 import org.flexlb.sync.status.EngineWorkerStatus;
 import org.flexlb.sync.status.ModelWorkerStatus;
-import org.flexlb.transport.HttpNettyClientHandler;
 import org.flexlb.util.IdUtils;
+import org.flexlb.util.JsonUtils;
 import org.flexlb.utils.LoggingUtils;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Master 引擎状态同步器
@@ -44,24 +42,22 @@ public class MasterEngineSynchronizer extends AbstractEngineStatusSynchronizer {
     public MasterEngineSynchronizer(WorkerAddressService workerAddressService,
                                     EngineHealthReporter engineHealthReporter,
                                     EngineWorkerStatus engineWorkerStatus,
-                                    HttpNettyClientHandler syncNettyClient,
                                     EngineGrpcService engineGrpcService,
                                     ModelMetaConfig modelMetaConfig,
                                     CacheAwareService localKvCacheAwareManager) {
 
-        super(
-                workerAddressService,
+        super(workerAddressService,
                 engineHealthReporter,
                 engineWorkerStatus,
-                syncNettyClient,
-                modelMetaConfig);
+                modelMetaConfig
+        );
 
         this.engineGrpcService = engineGrpcService;
         this.localKvCacheAwareManager = localKvCacheAwareManager;
 
         this.syncEngineStatusInterval = System.getenv("SYNC_STATUS_INTERVAL") != null
-            ? Long.parseLong(System.getenv("SYNC_STATUS_INTERVAL"))
-            : 20;
+                ? Long.parseLong(System.getenv("SYNC_STATUS_INTERVAL"))
+                : 20;
         this.syncRequestTimeoutMs = System.getenv("SYNC_REQUEST_TIMEOUT_MS") != null
                 ? Long.parseLong(System.getenv("SYNC_REQUEST_TIMEOUT_MS"))
                 : syncEngineStatusInterval;
@@ -75,7 +71,7 @@ public class MasterEngineSynchronizer extends AbstractEngineStatusSynchronizer {
             LoggingUtils.warn("prefill load balancer env:MODEL_CONFIG is empty");
             throw new RuntimeException("master load balancer env:MODEL_CONFIG is empty");
         }
-        ServiceRoute serviceRoute = JSON.parseObject(modelConfig, new TypeReference<ServiceRoute>() {
+        ServiceRoute serviceRoute = JsonUtils.toObject(modelConfig, new TypeReference<>() {
         });
         ModelMetaConfig.putServiceRoute(serviceRoute.getServiceId(), serviceRoute);
         modelNames.add(IdUtils.getModelNameByServiceId(serviceRoute.getServiceId()));
@@ -87,10 +83,10 @@ public class MasterEngineSynchronizer extends AbstractEngineStatusSynchronizer {
         logger.info("modelNames:{}", modelNames);
         try {
             for (String modelName : modelNames) {
-                ModelWorkerStatus modelWorkerStatus = engineWorkerStatus.getModelRoleWorkerStatusMap().get(modelName);
+                ModelWorkerStatus modelWorkerStatus = EngineWorkerStatus.MODEL_ROLE_WORKER_STATUS_MAP.get(modelName);
                 if (modelWorkerStatus == null) {
                     modelWorkerStatus = new ModelWorkerStatus();
-                    engineWorkerStatus.getModelRoleWorkerStatusMap().put(modelName, modelWorkerStatus);
+                    EngineWorkerStatus.MODEL_ROLE_WORKER_STATUS_MAP.put(modelName, modelWorkerStatus);
                 }
                 String serviceId = IdUtils.getServiceIdByModelName(modelName);
                 if (serviceId.isEmpty()) {
@@ -100,19 +96,15 @@ public class MasterEngineSynchronizer extends AbstractEngineStatusSynchronizer {
                 if (serviceRoute == null) {
                     logger.error("serviceRoute not found");
                     continue;
-                } else {
-                    logger.info("get serviceRoute, roleEndpoints:{}", serviceRoute.getRoleEndpoints().size());
                 }
                 List<RoleType> roleTypes = serviceRoute.getAllRoleTypes();
-                logger.info("roleTypes : {}", roleTypes);
                 for (RoleType roleType : roleTypes) {
                     List<Endpoint> roleEndpoints = serviceRoute.getRoleEndpoints(roleType);
                     if (roleEndpoints != null) {
-                        logger.info("get roleEndpoints by roleType : {}, get size : {}", roleType, roleEndpoints.size());
                         engineSyncExecutor.submit(new EngineSyncRunner(
                                 modelName, modelWorkerStatus.getRoleStatusMap(roleType),
                                 workerAddressService, statusCheckExecutor, engineHealthReporter,
-                                syncNettyClient, engineGrpcService, roleType, localKvCacheAwareManager,
+                                engineGrpcService, roleType, localKvCacheAwareManager,
                                 syncRequestTimeoutMs, syncCount, syncEngineStatusInterval));
                     } else {
                         logger.error("roleEndpoints is null, by roleType : {}", roleType);

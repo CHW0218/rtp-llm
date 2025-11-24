@@ -221,9 +221,12 @@ uint32_t rocmFmhaWrapper::runCKFmha(void*  q,
                              // nullptr,                        // o_acc_buf.GetDeviceBuffer(),
                              softmax_lse_,
                              output,
-                             seqstart_q,
-                             seqstart_k,
-                             nullptr,  // seqlen_kpads
+                             seqstart_q, //seqstart_q_ptr
+                             seqstart_k, //seqstart_k_ptr
+                             nullptr, //seqlen_q_ptr
+                             nullptr, //seqlen_k_ptr
+                             nullptr, //cu_seqlen_q_ptr
+                             nullptr, // cu_seqlen_k_ptr
                              shape_seqlen_q,
                              shape_seqlen_k,
                              batch,
@@ -485,9 +488,12 @@ uint32_t rocmFmhaWrapper::runCKFmhaV2(void*  q,
                              // nullptr,                        // o_acc_buf.GetDeviceBuffer(),
                              softmax_lse_,
                              output,
-                             seqstart_q,
-                             seqstart_k,
-                             nullptr,  // seqlen_kpads
+                             seqstart_q, //seqstart_q_ptr
+                             seqstart_k, //seqstart_k_ptr
+                             nullptr, //seqlen_q_ptr
+                             nullptr, //seqlen_k_ptr
+                             nullptr, //cu_seqlen_q_ptr
+                             nullptr, // cu_seqlen_k_ptr
                              shape_seqlen_q,
                              shape_seqlen_k,
                              batch,
@@ -751,9 +757,12 @@ uint32_t rocmFmhaWrapper::runCKFmhaMLA(void*  q,
                              // nullptr,                        // o_acc_buf.GetDeviceBuffer(),
                              softmax_lse_,
                              output,
-                             seqstart_q,
-                             seqstart_k,
-                             nullptr,  // seqlen_kpads
+                             seqstart_q, //seqstart_q_ptr
+                             seqstart_k, //seqstart_k_ptr
+                             nullptr, //seqlen_q_ptr
+                             nullptr, //seqlen_k_ptr
+                             nullptr, //cu_seqlen_q_ptr
+                             nullptr, // cu_seqlen_k_ptr
                              shape_seqlen_q,
                              shape_seqlen_k,
                              batch,
