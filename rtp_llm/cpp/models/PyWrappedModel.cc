@@ -244,7 +244,7 @@ GptModelOutputs PyWrappedModel::forward(const GptModelInputs& inputs) {
         if (enable_cuda_graph_) {
             DevicePerfWrapper wrapper(device_, "cuda graph python forward");
             py_model_inputs.attention_inputs.is_s_padded = true;
-            py_model_outputs = graph_runner_->forward(py_model_inputs);
+            py_model_outputs                             = graph_runner_->forward(py_model_inputs);
         } else {
             DevicePerfWrapper wrapper(device_, "normal forward");
             auto              py_model_forward = py_model_.attr("forward");
