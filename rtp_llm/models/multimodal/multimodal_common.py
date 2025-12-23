@@ -189,15 +189,19 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
         if configs is None:
             configs = [None] * len(input_urls)
 
-        # Preprocess all inputs
-        import orjson
+        # Handle datas (bytes) if present
+        datas = kwargs.pop("datas", None)
+        if datas is None:
+            single_data = kwargs.pop("data", None)
+            if single_data is not None:
+                datas = [single_data]
+            else:
+                datas = [None] * len(input_types)
+
 
         mm_inputs = []
-        for u, t in zip(input_urls, input_types):
-            if t == MMUrlType.CUSTOM:
-                mm_inputs.append(orjson.loads(u))
-            else:
-                mm_inputs.append(u)
+        for t, d in zip(input_types, datas):
+            mm_inputs.append(self._mm_preprocess(mm_type=t, data=d, **kwargs))
 
         with mm_lock:
             # Pass the list of inputs to mm_process (user implementation)
@@ -228,13 +232,12 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
             return (processed_results[0], None)
 
     @timeout_decorator(30)
-    def _mm_preprocess(self, data: str, mm_type: MMUrlType, **kwargs: Any):
-        # data here is the string passed from frontend (serialized JSON or raw string)
-        import json
-
-        if mm_type == MMUrlType.CUSTOM:
-            return json.loads(data)
-        return data
+    def _mm_preprocess(self, mm_type: MMUrlType, **kwargs: Any):
+        bytes_data = kwargs.get("data")
+        if bytes_data is not None:
+            return bytes_data
+        
+        return b""
 
     @torch.inference_mode()
     def mm_process(self, mm_input, **kwargs):

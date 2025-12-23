@@ -85,12 +85,17 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                         serialized_data = self.custom_preproceor(part.data)
                         mm_type = MMUrlType.CUSTOM
 
+                        # Ensure serialized_data is bytes
+                        if isinstance(serialized_data, str):
+                            serialized_data = serialized_data.encode("utf-8")
+
                         mm_input = MultimodalInput(
-                            url=serialized_data,
+                            url="",  # URL is unused for custom bytes transfer
                             mm_type=mm_type,
                             config=self._create_mm_preprocess_config(
                                 part.preprocess_config
                             ),
+                            data=serialized_data,
                         )
                         final_multimodal_inputs.append(mm_input)
 
@@ -134,6 +139,7 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         final_urls = [i.url for i in completed_inputs]
         final_types = [i.mm_type for i in completed_inputs]
         final_configs = [i.config for i in completed_inputs]
+        final_datas = [i.data for i in completed_inputs]
 
         return RenderedInputs(
             input_ids=base_rendered_inputs.input_ids,
@@ -141,4 +147,5 @@ class CustomModalProxyRenderer(CustomChatRenderer):
             input_urls=final_urls,
             input_urls_type=final_types,
             preprocess_configs=final_configs,
+            input_datas=final_datas,
         )

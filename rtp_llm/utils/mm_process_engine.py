@@ -37,6 +37,7 @@ class MMProcessEngine:
         types: Optional[List[MMUrlType]] = None,
         tensors: Optional[List[torch.Tensor]] = None,
         preprocess_configs: Optional[List[List[int]]] = None,
+        datas: Optional[List[Optional[bytes]]] = None,
     ):
         if types is None or len(types) == 0:
             types = [MMUrlType.DEFAULT] * len(urls)
@@ -44,11 +45,14 @@ class MMProcessEngine:
             configs = [MMPreprocessConfig()] * len(urls)
         else:
             configs = [MMPreprocessConfig(*config) for config in preprocess_configs]
+        
+        if datas is None or len(datas) == 0:
+            datas = [None] * len(urls)
 
         if self.run_batch:
             with Timer() as route_timer:
                 res, pos = self.model.mm_part.mm_embedding(
-                    urls, types, tensors=tensors, configs=configs
+                    urls, types, tensors=tensors, configs=configs, datas=datas
                 )
             kmonitor.report(
                 GaugeMetrics.VIT_PREPROCESS_RT_METRIC, route_timer.cost_ms()
@@ -59,7 +63,7 @@ class MMProcessEngine:
             pos: Optional[List[torch.Tensor]] = [] if self.contains_pos else None
             for index in range(len(urls)):
                 embedding, pos_ids = self.model.mm_part.mm_embedding(
-                    urls[index], types[index], configs=configs[index]
+                    urls[index], types[index], configs=configs[index], data=datas[index]
                 )
                 res.extend(self._maybe_tensor_to_list(embedding))
                 if self.contains_pos:

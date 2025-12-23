@@ -97,26 +97,6 @@ class BaseMultiModalWeightInfo:
                         )
                     )
 
-            if self.tp_rank == 0:
-                cls = ModelDeployWeightInfo.load_custom_modal_class(
-                    self.config.custom_modal, self.config.ckpt, Method.Embedding
-                )
-                if cls:
-                    get_weight_info_method = getattr(cls, "get_weight_info", None)
-                    if callable(get_weight_info_method):
-                        extra_weights = get_weight_info_method(
-                            self.config, self.tp_rank
-                        )
-                        if extra_weights:
-                            logging.info(
-                                f"Registering {len(extra_weights)} extra weights from {cls.__name__}"
-                            )
-                            llm_weights.weights.extend(extra_weights)
-                    else:
-                        logging.warning(
-                            f"Custom modal class '{cls.__name__}' has no callable 'get_weight_info' static method."
-                        )
-
         return llm_weights
 
 
@@ -129,6 +109,7 @@ class MultiModalMixin:
         return get_vit_compute_dtype(self.config.data_type)
 
     def init_multimodal(self, config: GptInitModelParameters, device: str) -> None:
+        self.mm_part = None
         self.vit_config = config.py_env_configs.vit_config
         if config.vit_separation != 2:
             with torch.device(device):
@@ -163,7 +144,7 @@ class MultiModalMixin:
                                         else mm_type
                                     )
                                     if isinstance(target_type, int):  # Enum is int
-                                        is_custom = target_type == [MMUrlType.CUSTOM]
+                                        is_custom = target_type == MMUrlType.CUSTOM
 
                                     if is_custom:
                                         return original_method(url, mm_type, **kwargs)
