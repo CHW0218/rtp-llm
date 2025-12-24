@@ -51,7 +51,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         except Exception as e:
             logging.warning(f"Failed to load custom_preprocess: {e}")
             return None
-        return None
 
     def _create_mm_preprocess_config(
         self, part_config: Optional[MMPreprocessConfigPart]
@@ -70,13 +69,13 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         )
 
     def render_chat(self, request: ChatCompletionRequest) -> RenderedInputs:
-        modified_request = copy.deepcopy(request)
+        # modified_request = copy.deepcopy(request)
 
         # This list will hold the final ordered MultimodalInputs.
         # We use None as a placeholder for inputs that the base renderer will handle (Images/Videos).
         final_multimodal_inputs: List[Optional[MultimodalInput]] = []
 
-        for message in modified_request.messages:
+        for message in request.messages:
             if isinstance(message.content, list):
                 new_content_list = []
                 for part in message.content:
@@ -112,7 +111,7 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                         # Text or other types do not consume multimodal slots
                         new_content_list.append(part)
                 message.content = new_content_list
-        base_rendered_inputs = self.wrapped_renderer.render_chat(modified_request)
+        base_rendered_inputs = self.wrapped_renderer.render_chat(request)
         base_inputs_iter = iter(base_rendered_inputs.multimodal_inputs)
 
         # Fill in the placeholders with actual inputs from base renderer
