@@ -33,7 +33,11 @@ private:
             }
             try {
                 py::gil_scoped_acquire acquire;
-                auto res              = mm_process_engine_.attr("submit")(urls, types, tensors, mm_preprocess_configs, datas);
+                py::list py_datas;
+                for (auto& data : datas) {
+                    py_datas.append(py::bytes(data));
+                }
+                auto res              = mm_process_engine_.attr("submit")(urls, types, tensors, mm_preprocess_configs, py_datas);
                 auto mm_embedding_vec = convertPyObjectToVec(res.attr("embeddings"));
 
                 MultimodalOutput           mm_embedding_res;
