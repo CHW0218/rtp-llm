@@ -143,17 +143,11 @@ class MultiModalMixin:
                                 ):
                                     target_type = (
                                         mm_type[0]
-                                        if isinstance(mm_type, list)
-                                        and len(mm_type) > 0
+                                        if isinstance(mm_type, list) and mm_type
                                         else mm_type
                                     )
 
-                                    is_custom = (
-                                        isinstance(target_type, int)
-                                        and target_type == MMUrlType.CUSTOM
-                                    )
-
-                                    if is_custom:
+                                    if target_type == MMUrlType.CUSTOM:
                                         return original_custom_method(
                                             url=url,
                                             mm_type=mm_type,
@@ -162,19 +156,19 @@ class MultiModalMixin:
                                             configs=configs,
                                             **kwargs,
                                         )
-                                    else:
-                                        if url is None:
-                                            raise ValueError(
-                                                f"Native mm_part (type={target_type}) requires 'url' parameter"
-                                            )
-                                        return original_mm_part.mm_embedding(
-                                            url,
-                                            target_type,
-                                            data=data,
-                                            tensors=tensors,
-                                            configs=configs,
-                                            **kwargs,
+
+                                    if url is None:
+                                        raise ValueError(
+                                            f"Native mm_part (type={target_type}) requires 'url' parameter"
                                         )
+                                    return original_mm_part.mm_embedding(
+                                        url,
+                                        target_type,
+                                        data=data,
+                                        tensors=tensors,
+                                        configs=configs,
+                                        **kwargs,
+                                    )
 
                                 custom_mm_part.mm_embedding = _composite_mm_embedding
 
