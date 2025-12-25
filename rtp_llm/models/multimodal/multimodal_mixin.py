@@ -133,9 +133,14 @@ class MultiModalMixin:
                                     f"Creating composite router."
                                 )
 
-                                def _composite_mm_embedding(**kwargs):
-                                    mm_type = kwargs.get("mm_type", MMUrlType.DEFAULT)
-
+                                def _composite_mm_embedding(
+                                    url=None,
+                                    mm_type=MMUrlType.DEFAULT,
+                                    data=None,
+                                    tensors=None,
+                                    configs=None,
+                                    **kwargs,
+                                ):
                                     target_type = (
                                         mm_type[0]
                                         if isinstance(mm_type, list)
@@ -149,15 +154,26 @@ class MultiModalMixin:
                                     )
 
                                     if is_custom:
-                                        return original_custom_method(**kwargs)
+                                        return original_custom_method(
+                                            url=url,
+                                            mm_type=mm_type,
+                                            data=data,
+                                            tensors=tensors,
+                                            configs=configs,
+                                            **kwargs,
+                                        )
                                     else:
-                                        url = kwargs.pop("url", None)
                                         if url is None:
                                             raise ValueError(
                                                 f"Native mm_part (type={target_type}) requires 'url' parameter"
                                             )
                                         return original_mm_part.mm_embedding(
-                                            url, target_type, **kwargs
+                                            url,
+                                            target_type,
+                                            data=data,
+                                            tensors=tensors,
+                                            configs=configs,
+                                            **kwargs,
                                         )
 
                                 custom_mm_part.mm_embedding = _composite_mm_embedding
