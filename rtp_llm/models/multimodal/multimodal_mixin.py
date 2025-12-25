@@ -123,34 +123,41 @@ class MultiModalMixin:
                     )
                     if cls:
                         try:
-                            # Assuming the custom class constructor signature is (config, tokenizer)
                             custom_mm_part = cls(config)
 
-                            # If a native mm_part already exists (e.g. Qwen-VL), we need to support both.
                             if hasattr(self, "mm_part") and self.mm_part is not None:
                                 original_mm_part = self.mm_part
-                                original_method = custom_mm_part.mm_embedding
+                                original_custom_method = custom_mm_part.mm_embedding
                                 logging.info(
-                                    f"Native mm_part found: {type(original_mm_part).__name__}. Creating composite router."
+                                    f"Native mm_part found: {type(original_mm_part).__name__}. "
+                                    f"Creating composite router."
                                 )
 
-                                def _composite_mm_embedding(url, mm_type, **kwargs):
-                                    # Check if it's a custom type (handle both single int and list)
-                                    is_custom = False
+                                def _composite_mm_embedding(**kwargs):
+                                    mm_type = kwargs.get("mm_type", MMUrlType.DEFAULT)
+
                                     target_type = (
                                         mm_type[0]
                                         if isinstance(mm_type, list)
                                         and len(mm_type) > 0
                                         else mm_type
                                     )
-                                    if isinstance(target_type, int):  # Enum is int
-                                        is_custom = target_type == MMUrlType.CUSTOM
+
+                                    is_custom = (
+                                        isinstance(target_type, int)
+                                        and target_type == MMUrlType.CUSTOM
+                                    )
 
                                     if is_custom:
-                                        return original_method(url, mm_type, **kwargs)
+                                        return original_custom_method(**kwargs)
                                     else:
+                                        url = kwargs.pop("url", None)
+                                        if url is None:
+                                            raise ValueError(
+                                                f"Native mm_part (type={target_type}) requires 'url' parameter"
+                                            )
                                         return original_mm_part.mm_embedding(
-                                            url, mm_type, **kwargs
+                                            url, target_type, **kwargs
                                         )
 
                                 custom_mm_part.mm_embedding = _composite_mm_embedding
@@ -158,7 +165,7 @@ class MultiModalMixin:
                             self.mm_part = custom_mm_part
 
                             logging.info(
-                                f"Successfully replaced mm_part with custom implementation: {cls.__name__}"
+                                f"Successfully loaded custom mm_part: {cls.__name__}"
                             )
                         except Exception as e:
                             logging.error(

@@ -4,17 +4,11 @@ from contextlib import contextmanager
 import viztracer
 
 
-def get_global_tracer():
-    tracer = viztracer.get_tracer()
-    if tracer is None:
-        tracer = viztracer.VizTracer(tracer_entries=2000000, log_gc=True)
-    return tracer
-
-
 @contextmanager
 def trace_scope(name):
-    tracer = get_global_tracer()
-    # tracer = viztracer.VizTracer(tracer_entries=2000000, log_gc=True, register_global=False)
+    tracer = viztracer.VizTracer(
+        tracer_entries=2000000, log_gc=True, register_global=False
+    )
     tracer.start()
     start_time = tracer.getts()
     try:
@@ -22,13 +16,10 @@ def trace_scope(name):
     finally:
         end_time = tracer.getts()
         tracer.stop()
-        if end_time - start_time >= 100000:  # 100ms
+        if name:
             tracer.save(
-                f"/home/silu.zsl/RTP-LLM/github-opensource/{name}.json"
-                if name is not None
-                else None
+                f"/home/caihaowen.chw/work/RTP-LLM/github-opensource/{name}.json"
             )
-        tracer.clear()
 
 
 def trace_func(name_gen=lambda f, *args, **kwargs: f.__name__):

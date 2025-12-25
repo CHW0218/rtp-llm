@@ -166,67 +166,59 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
     @torch.inference_mode()
     def mm_embedding(
         self,
-        url: Union[str, List[str]],
+        url: Optional[Union[str, List[str]]] = None,  # Ignored
         mm_type: Union[MMUrlType, List[MMUrlType]] = MMUrlType.DEFAULT,
+        data: Optional[Union[bytes, List[bytes]]] = None,
         tensors: Optional[List[torch.Tensor]] = None,
+        configs: Optional[List[Any]] = None,
         **kwargs: Any,
     ):
         dtype = self._data_type
         if g_parallel_info.tp_rank > 0:
             return (torch.Tensor([]), None)
 
-        # Normalize input to list for unified processing
-        input_urls = url if isinstance(url, list) else [url]
-
-        # Handle mm_type list vs single
         if isinstance(mm_type, list):
             input_types = mm_type
         else:
-            input_types = [mm_type] * len(input_urls)
+            input_types = [mm_type]
 
-        # Distribute configs if present (trust upstream to provide list or None)
-        configs = kwargs.pop("configs", None)
+        if data is None:
+            datas = [None] * len(input_types)
+        elif isinstance(data, list):
+            datas = data
+        else:
+            datas = [data]
+
         if configs is None:
-            configs = [None] * len(input_urls)
+            configs = [None] * len(input_types)
 
-        # Handle datas (bytes) if present
-        datas = kwargs.pop("datas", None)
-        if datas is None:
-            single_data = kwargs.pop("data", None)
-            if single_data is not None:
-                datas = [single_data]
-            else:
-                datas = [None] * len(input_types)
-
+        assert len(input_types) == len(
+            datas
+        ), f"mm_type and data length mismatch: {len(input_types)} vs {len(datas)}"
 
         mm_inputs = []
-        for t, d in zip(input_types, datas):
-            mm_inputs.append(self._mm_preprocess(mm_type=t, data=d, **kwargs))
+        for t, d, cfg in zip(input_types, datas, configs):
+            mm_inputs.append(
+                self._mm_preprocess(mm_type=t, data=d, config=cfg, **kwargs)
+            )
 
         with mm_lock:
-            # Pass the list of inputs to mm_process (user implementation)
-            # User code is expected to handle List[Data] and return List[Result]
             features_batch = self.mm_process(mm_inputs, mm_type=mm_type, **kwargs)
-        # Ensure output is a list
-        if not isinstance(features_batch, list):
-            features_batch = [features_batch]
+
         processed_results = []
         for feat in features_batch:
-            # Handle case where a single block result is a list of tensors (items) -> Concatenate
             if isinstance(feat, list):
                 tensor = torch.cat(feat, dim=0)
             else:
                 tensor = feat
 
-            # Convert dtype and ensure contiguous
             if isinstance(tensor, torch.Tensor):
                 tensor = tensor.to(dtype).contiguous()
             processed_results.append(tensor)
 
-        if isinstance(url, list):
+        if isinstance(mm_type, list):
             return (processed_results, None)
         else:
-            # Return tuple format for single input compatibility with existing backend logic
             if not processed_results:
                 return (torch.tensor([]).to(dtype), None)
             return (processed_results[0], None)
@@ -236,7 +228,7 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
         bytes_data = kwargs.get("data")
         if bytes_data is not None:
             return bytes_data
-        
+
         return b""
 
     @torch.inference_mode()

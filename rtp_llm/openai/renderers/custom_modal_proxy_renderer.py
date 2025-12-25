@@ -69,10 +69,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         )
 
     def render_chat(self, request: ChatCompletionRequest) -> RenderedInputs:
-        # modified_request = copy.deepcopy(request)
-
-        # This list will hold the final ordered MultimodalInputs.
-        # We use None as a placeholder for inputs that the base renderer will handle (Images/Videos).
         final_multimodal_inputs: List[Optional[MultimodalInput]] = []
 
         for message in request.messages:
@@ -115,7 +111,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         base_inputs_iter = iter(base_rendered_inputs.multimodal_inputs)
 
         # Fill in the placeholders with actual inputs from base renderer
-        # Note: We reconstruct the list to satisfy type checking (remove Optional)
         completed_inputs: List[MultimodalInput] = []
         for item in final_multimodal_inputs:
             if item is None:
@@ -134,7 +129,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
             completed_inputs.append(remaining)
 
         # Return a new RenderedInputs object with the combined multimodal_inputs
-        # RenderedInputs constructor expects separate lists for urls, types, and configs
         final_urls = [i.url for i in completed_inputs]
         final_types = [i.mm_type for i in completed_inputs]
         final_configs = [i.config for i in completed_inputs]
