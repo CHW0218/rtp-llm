@@ -182,22 +182,20 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
         else:
             input_types = [mm_type]
 
-        if data is None:
-            datas = [None] * len(input_types)
-        elif isinstance(data, list):
-            datas = data
+        if data is not None:
+            input_datas = data if isinstance(data, list) else [data]
         else:
-            datas = [data]
+            input_datas = [None] * len(input_types)
 
         if configs is None:
             configs = [None] * len(input_types)
 
         assert len(input_types) == len(
-            datas
-        ), f"mm_type and data length mismatch: {len(input_types)} vs {len(datas)}"
+            input_datas
+        ), f"mm_type and data length mismatch: {len(input_types)} vs {len(input_datas)}"
 
         mm_inputs = []
-        for t, d, cfg in zip(input_types, datas, configs):
+        for t, d, cfg in zip(input_types, input_datas, configs):
             mm_inputs.append(
                 self._mm_preprocess(mm_type=t, data=d, config=cfg, **kwargs)
             )
@@ -224,10 +222,9 @@ class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
             return (processed_results[0], None)
 
     @timeout_decorator(30)
-    def _mm_preprocess(self, mm_type: MMUrlType, **kwargs: Any):
-        bytes_data = kwargs.get("data")
-        if bytes_data is not None:
-            return bytes_data
+    def _mm_preprocess(self, mm_type: MMUrlType, data: Optional[bytes] = None, **kwargs: Any):
+        if data is not None:
+            return data
 
         return b""
 
