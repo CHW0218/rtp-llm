@@ -5,6 +5,7 @@ import torch
 
 from rtp_llm.metrics import kmonitor
 from rtp_llm.metrics.kmonitor_metric_reporter import GaugeMetrics
+from rtp_llm.utils.debug_trace import trace_func
 from rtp_llm.utils.multimodal_util import MMPreprocessConfig, MMUrlType
 from rtp_llm.utils.time_util import Timer
 from rtp_llm.utils.util import check_with_info
@@ -31,6 +32,7 @@ class MMProcessEngine:
         else:
             return [tensor]
 
+    @trace_func()
     def submit(
         self,
         urls: List[str],
@@ -52,7 +54,7 @@ class MMProcessEngine:
         if self.run_batch:
             with Timer() as route_timer:
                 res, pos = self.model.mm_part.mm_embedding(
-                    urls, types, tensors=tensors, configs=configs, datas=datas
+                    urls, types, tensors=tensors, configs=configs, data=datas
                 )
             kmonitor.report(
                 GaugeMetrics.VIT_PREPROCESS_RT_METRIC, route_timer.cost_ms()
