@@ -174,8 +174,13 @@ class BasicRenderer(CustomChatRenderer):
     def render_chat(self, request: ChatCompletionRequest) -> RenderedInputs:
         template = self._get_template(request)
         request_dict = json.loads(request.model_dump_json(exclude_none=True))
+        # Flatten list content to string for Jinja2 compatibility
+        for msg in request_dict.get("messages", []):
+            if isinstance(msg.get("content"), list):
+                msg["content"] = "".join(p.get("text", "") for p in msg["content"] if p.get("type") == "text")
+
         render_args = {
-            "messages": request_dict["messages"],
+            "messages": request_dict.get("messages", []),
             "json": json,
             "add_generation_prompt": self.add_generation_prompt,
         }
