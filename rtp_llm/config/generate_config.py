@@ -87,6 +87,7 @@ class GenerateConfig(BaseModel):
     select_tokens_id: List[int] = []
     return_input_ids: bool = False
     return_output_ids: bool = False
+    aux_info: bool = False
     md5_value: str = ""
     custom_prop: str = "{}"
     sp_advice_prompt: str = ""
