@@ -61,6 +61,7 @@ class MMUrlType(IntEnum):
     AUDIO = 3
     TENSOR = 4
     IGRAPH = 5
+    CUSTOM = 6
 
 
 @dataclass
@@ -78,19 +79,19 @@ class MultimodalInput:
     url: str
     mm_type: MMUrlType
     config: MMPreprocessConfig
-    tensor: torch.Tensor
+    tensors: list[torch.Tensor]
 
     def __init__(
         self,
         url: str,
         mm_type: MMUrlType = MMUrlType.DEFAULT,
         config: MMPreprocessConfig = MMPreprocessConfig(),
-        tensor: torch.Tensor = torch.empty(1),
+        tensors: list[torch.Tensor] = [],
     ):
         self.url = url
         self.mm_type = mm_type
         self.config = config
-        self.tensor = tensor
+        self.tensors = tensors
 
 
 def get_vit_compute_dtype(dtype: str):

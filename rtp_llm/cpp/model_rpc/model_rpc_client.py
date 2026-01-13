@@ -26,7 +26,7 @@ from rtp_llm.utils.base_model_datatypes import (
     GenerateOutputs,
 )
 from rtp_llm.utils.grpc_host_channel_pool import GrpcHostChannelPool
-from rtp_llm.utils.grpc_util import trans_option, trans_option_cast, trans_tensor
+from rtp_llm.utils.grpc_util import trans_option, trans_option_cast, trans_tensor, trans_from_tensor
 
 MAX_GRPC_TIMEOUT_SECONDS = 3600
 
@@ -192,6 +192,8 @@ def trans_multimodal_input(
         mm_preprocess_config_pb.fps = mm_input.config.fps
         mm_preprocess_config_pb.min_frames = mm_input.config.min_frames
         mm_preprocess_config_pb.max_frames = mm_input.config.max_frames
+        for tensor in mm_input.tensors:
+            mm_input_pb.multimodal_tensors.append(trans_from_tensor(tensor))
         input_pb.multimodal_inputs.append(mm_input_pb)
 
 
