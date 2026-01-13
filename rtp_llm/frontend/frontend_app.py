@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import gc
 import socket
 import threading
 from typing import Any, Dict, List, Optional, Union
@@ -101,6 +102,8 @@ class FrontendApp(object):
         try:
             server = GracefulShutdownServer(config)
             server.set_server(self.frontend_server)
+            gc.collect()
+            gc.freeze()
             server.run()
         except BaseException as e:
             raise e
