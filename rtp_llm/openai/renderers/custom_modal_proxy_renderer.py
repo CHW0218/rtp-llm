@@ -75,8 +75,19 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                 new_content_list = []
                 for part in message.content:
                     if part.type == ContentPartTypeEnum.custom:
+                        data_len = (
+                            len(part.data)
+                            if hasattr(part.data, "__len__")
+                            else "unknown"
+                        )
+                        logging.info(
+                            f"DEBUG: Found custom content part. Data length: {data_len}"
+                        )
                         mm_type = MMUrlType.CUSTOM
                         tensors = self.custom_preprocessor(part.data)
+                        logging.info(
+                            f"DEBUG: custom_preproceor returned {len(tensors)} tensors."
+                        )
                         mm_input = MultimodalInput(
                             url="",  # URL is unused for custom bytes transfer
                             mm_type=mm_type,
@@ -97,6 +108,18 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                         final_multimodal_inputs.append(None)
                         new_content_list.append(part)
                     else:
+                        data_summary = "None"
+                        if hasattr(part, "data") and part.data:
+                            data_len = (
+                                len(part.data)
+                                if hasattr(part.data, "__len__")
+                                else "unknown"
+                            )
+                            data_summary = f"present(len={data_len})"
+                            
+                        logging.info(
+                            f"DEBUG: Processing standard part as text/other. Type: {part.type}, Data: {data_summary}"
+                        )
                         # Text or other types do not consume multimodal slots
                         new_content_list.append(part)
                 message.content = new_content_list
