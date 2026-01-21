@@ -231,9 +231,14 @@ class RenderedInputs:
         input_urls: List[str] = [],
         input_urls_type: List[MMUrlType] = [],
         preprocess_configs: List[MMPreprocessConfig] = [],
+        multimodal_inputs: Optional[List[MultimodalInput]] = None,
     ):
         self.input_ids = input_ids
         self.rendered_prompt = rendered_prompt
+        if multimodal_inputs is not None:
+            self.multimodal_inputs = multimodal_inputs
+            return
+
         self.multimodal_inputs = []
         if len(input_urls_type) == 0:
             input_urls_type = [MMUrlType.DEFAULT] * len(input_urls)
