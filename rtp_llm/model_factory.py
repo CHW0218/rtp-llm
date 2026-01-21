@@ -15,7 +15,6 @@ from rtp_llm.config.gpt_init_model_parameters import ConfigMode, GptInitModelPar
 from rtp_llm.distribute.gang_info import get_gang_info
 from rtp_llm.distribute.worker_info import g_parallel_info
 from rtp_llm.model_factory_register import _model_factory
-from rtp_llm.models.multimodal.multimodal_mixin import MultiModalMixin
 from rtp_llm.tools.api.hf_model_helper import get_model_info_from_hf
 from rtp_llm.utils.base_model_datatypes import ModelConfig
 from rtp_llm.utils.dump_config_utils import dump_model_to_table
@@ -76,6 +75,8 @@ class ModelFactory:
 
     @staticmethod
     def _create_model(model_config: ModelConfig):
+        from rtp_llm.models.multimodal.multimodal_mixin import MultiModalMixin
+
         global _model_factory
         if model_config.model_type not in _model_factory:
             raise Exception(f"model type {model_config.model_type} not registered!")
