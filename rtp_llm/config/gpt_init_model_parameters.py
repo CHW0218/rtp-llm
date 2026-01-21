@@ -469,6 +469,7 @@ class GptInitModelParameters:
         self.qk_norm = False
         self.quant_config = None
         self.config_dtype = None
+        self.custom_modal = None
 
         # For cpp, we use `gpt_init_params`, `py_env_configs` for python.
         # There are some common envs in cpp and python, so they will
@@ -502,10 +503,30 @@ class GptInitModelParameters:
         updated_params.add(k)
         if k in self.__slots__:
             object.__setattr__(self, k, v)
+            if k == "custom_modal" and v is not None:
+                self._update_mm_sep_tokens_from_custom_modal(v)
         elif v is not None:
             self.gpt_init_params.__setattr__(k, v)
             if k in self._model_related_types:
                 getattr(self.gpt_init_params, self._model_related_types[k])()
+
+    def _update_mm_sep_tokens_from_custom_modal(self, custom_config: Dict[str, Any]):
+        if "custom_modal_token_id" in custom_config:
+            token_id = custom_config["custom_modal_token_id"]
+            if isinstance(token_id, int):
+                # Append to existing mm_sep_tokens.
+                current_sep_tokens = self.gpt_init_params.mm_sep_tokens
+                # Avoid duplicates
+                if [token_id] not in current_sep_tokens:
+                    current_sep_tokens.append([token_id])
+                    self.gpt_init_params.mm_sep_tokens = current_sep_tokens
+                    logging.info(
+                        f"Added custom_modal_token_id {token_id} to mm_sep_tokens: {current_sep_tokens}"
+                    )
+            else:
+                logging.warning(
+                    f"custom_modal_token_id {token_id} is not an int, skipping mm_sep_tokens update."
+                )
 
     def update(self, update_params: Dict[str, Any]):
         for k, v in update_params.items():
@@ -836,6 +857,27 @@ class GptInitModelParameters:
             self.layer_head_num_kv = sparse_config.layer_head_num
             self.layer_inter_size = sparse_config.layer_inter_size
             self.is_sparse_head = True
+
+    def update_config_with_custom_modal(self, ckpt_path: str):
+        config_path = os.path.join(ckpt_path, "config.json")
+        if os.path.exists(config_path):
+            logging.info(f"read custom_modal config from: {config_path}")
+            try:
+                with open(config_path, "r") as reader:
+                    config_json = json.load(reader)
+
+                    # Update essential params for AOT compilation
+                    if "hidden_size" in config_json:
+                        self.gpt_init_params.hidden_size = config_json["hidden_size"]
+                    if "vocab_size" in config_json:
+                        self.gpt_init_params.vocab_size = config_json["vocab_size"]
+
+                    if "custom_modal" in config_json:
+                        self.custom_modal = config_json["custom_modal"]
+                        self.vit_run_batch = True
+                        logging.info(f"Loaded custom_modal config: {self.custom_modal}")
+            except Exception as e:
+                logging.warning(f"load custom_modal config failed: {e}")
 
     def update_inter_padding_size(self, tp_size: int, ep_size: int, dp_size: int):
         if tp_size * dp_size != ep_size:
