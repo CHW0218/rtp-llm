@@ -24,6 +24,7 @@ from rtp_llm.openai.api_datatype import (
 )
 from rtp_llm.openai.renderer_factory import ChatRendererFactory
 from rtp_llm.openai.renderers.basic_renderer import BasicRenderer
+from rtp_llm.openai.renderers.custom_modal_proxy_renderer import CustomModalProxyRenderer
 from rtp_llm.openai.renderers.custom_renderer import (
     CustomChatRenderer,
     RenderedInputs,
@@ -64,6 +65,7 @@ class OpenaiEndpoint(object):
             stop_word_ids_list=self.stop_words_id_list,
             template_type=self.model_config.template_type,
             ckpt_path=self.model_config.ckpt_path,
+            custom_modal_config=self.model_config.custom_modal,
         )
 
         self.chat_renderer: CustomChatRenderer = ChatRendererFactory.get_renderer(
@@ -75,6 +77,11 @@ class OpenaiEndpoint(object):
             if isinstance(self.chat_renderer, BasicRenderer)
             else BasicRenderer(self.tokenizer, render_params)
         )
+        
+        if getattr(render_params, "custom_modal_config", None):
+            logging.info(f"Wrapping template_renderer {type(self.template_renderer).__name__} with CustomModalProxyRenderer for custom modal support.")
+            self.template_renderer = CustomModalProxyRenderer(self.tokenizer, render_params, self.template_renderer)
+
         logging.info(f"chat_renderer [{self.chat_renderer}] is created.")
         extra_stop_word_ids_list = self.chat_renderer.get_all_extra_stop_word_ids_list()
         self.stop_words_id_list.extend(extra_stop_word_ids_list)
