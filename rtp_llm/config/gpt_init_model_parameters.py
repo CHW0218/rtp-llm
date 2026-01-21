@@ -223,6 +223,7 @@ class GptInitModelParameters:
         "config_dtype",
         "th_nccl_port",
         "model_type",
+        "custom_modal",
     }
 
     # copy from rtp_llm/ops/libth_transformer.pyi for python intelligence
