@@ -68,6 +68,7 @@ class ModelFactory:
             gang_info=get_gang_info(),
             config_mode=ConfigMode.SimpleMode,
         )
+        config.update_config_with_custom_modal(model_config.ckpt_path)
         config.seq_size_per_block = model_config.seq_size_per_block
 
         return config
