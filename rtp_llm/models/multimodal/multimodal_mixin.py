@@ -1,13 +1,13 @@
 import gc
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 
-from rtp_llm.config.exceptions import ExceptionType, FtRuntimeException
-from rtp_llm.config.generate_config import RequestFormat
 from rtp_llm.config.gpt_init_model_parameters import (
     GptInitModelParameters,
     VitParameters,
@@ -21,8 +21,13 @@ from rtp_llm.model_loader.weight_module import MMAtomicWeight
 from rtp_llm.models.multimodal.multimodal_common import MultiModalEmbeddingInterface
 from rtp_llm.models.multimodal.multimodal_trt_engine import MultiModalTRTEngine
 from rtp_llm.ops.comm.nccl_op import NcclOp
+from rtp_llm.utils.custommodal_util import MethodType, load_custom_modal_class
 from rtp_llm.utils.model_weight import CkptWeightInfo, identity, sp_id
-from rtp_llm.utils.multimodal_util import MultimodalInput, get_vit_compute_dtype
+from rtp_llm.utils.multimodal_util import (
+    MMUrlType,
+    MultimodalInput,
+    get_vit_compute_dtype,
+)
 
 
 class BaseVitWeights:
@@ -110,6 +115,75 @@ class MultiModalMixin:
                 torch_default_dtype = torch.get_default_dtype()
                 torch.set_default_dtype(self.vit_data_type)
                 self._init_multimodal(config)
+                # Dynamic injection of custom multimodal embedding
+                if hasattr(config, "custom_modal") and config.custom_modal:
+                    cls = load_custom_modal_class(
+                        config.custom_modal, config.ckpt_path, MethodType.Embedding
+                    )
+                    if cls:
+                        try:
+                            custom_mm_part = cls(config)
+
+                            if hasattr(self, "mm_part") and self.mm_part is not None:
+                                original_mm_part = self.mm_part
+                                original_custom_method = custom_mm_part.mm_embedding
+                                logging.info(
+                                    f"Native mm_part found: {type(original_mm_part).__name__}. "
+                                    f"Creating composite router."
+                                )
+
+                                def _composite_mm_embedding(
+                                    url=None,
+                                    mm_type=MMUrlType.DEFAULT,
+                                    data=None,
+                                    tensors=None,
+                                    configs=None,
+                                    **kwargs,
+                                ):
+                                    target_type = (
+                                        mm_type[0]
+                                        if isinstance(mm_type, list) and mm_type
+                                        else mm_type
+                                    )
+
+                                    if target_type == MMUrlType.CUSTOM:
+                                        return original_custom_method(
+                                            url=url,
+                                            mm_type=mm_type,
+                                            data=data,
+                                            tensors=tensors,
+                                            configs=configs,
+                                            **kwargs,
+                                        )
+
+                                    if url is None:
+                                        raise ValueError(
+                                            f"Native mm_part (type={target_type}) requires 'url' parameter"
+                                        )
+                                    return original_mm_part.mm_embedding(
+                                        url,
+                                        target_type,
+                                        data=data,
+                                        tensors=tensors,
+                                        configs=configs,
+                                        **kwargs,
+                                    )
+
+                                custom_mm_part.mm_embedding = _composite_mm_embedding
+
+                            self.mm_part = custom_mm_part
+
+                            logging.info(
+                                f"Successfully loaded custom mm_part: {cls.__name__}"
+                            )
+                        except Exception as e:
+                            logging.error(
+                                f"Failed to instantiate custom embedding module: {e}"
+                            )
+                            raise RuntimeError(
+                                f"Custom embedding module load failure: {e}"
+                            )
+
                 torch.set_default_dtype(torch_default_dtype)
 
     def _init_multimodal(self, config: GptInitModelParameters) -> None:
@@ -230,6 +304,21 @@ class MultiModalMixin:
 
         # For trt engine, we don't need to load weight since its weight is inside trt engine.
         if isinstance(self.mm_part, MultiModalTRTEngine):
+            return
+
+        # For AOT mode, weights are already handled during compilation
+        if getattr(self.config, "vit_separation", 0) == 3:
+            logging.info(
+                "AOT mode detected (vit_separation=3), skipping Python mm_part.load_weight."
+            )
+            return
+
+        # Call custom load_weight if available.
+        if hasattr(self.mm_part, "load_weight") and callable(self.mm_part.load_weight):
+            logging.info("Calling custom mm_part.load_weight() in load_mm_weight...")
+            self.mm_part.load_weight(self.weight)
+
+        if self.config.mm_related_params.vit_weights is None:
             return
 
         self._load_mm_weight(self.config.mm_related_params, ctype, device)

@@ -73,6 +73,10 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                 new_content_list = []
                 for part in message.content:
                     if part.type == ContentPartTypeEnum.custom:
+                        if self.custom_preprocessor is None:
+                            raise RuntimeError(
+                                "Custom preprocessor is not loaded. Please check if the custom modal module path is correct and the module exists in the checkpoint directory."
+                            )
                         data_len = (
                             len(part.data)
                             if hasattr(part.data, "__len__")

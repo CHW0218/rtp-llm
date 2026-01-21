@@ -13,7 +13,7 @@ class MethodType(Enum):
 
 MODEL_PATH_CONFIG = {
     MethodType.Embedding: "embedding_module_path",
-    MethodType.Preprocess: "processer_module_path",
+    MethodType.Preprocess: "processor_module_path",
 }
 
 
@@ -25,6 +25,10 @@ def load_custom_modal_class(
         return None
 
     path_str = custom_modal_config.get(MODEL_PATH_CONFIG[type])
+    if not path_str and type == MethodType.Preprocess:
+        # Fallback for typo in config
+        path_str = custom_modal_config.get("processer_module_path")
+
     if not path_str:
         return None
 

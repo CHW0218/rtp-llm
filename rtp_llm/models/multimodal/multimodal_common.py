@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 
@@ -157,4 +157,85 @@ class VideoEmbeddingInterface(MultiModalEmbeddingInterface):
 
     @torch.inference_mode()
     def video_embedding(self, video: List[Image.Image]):
+        raise NotImplementedError()
+
+
+class CustomMultiModalEmbeddingInterface(MultiModalEmbeddingInterface):
+    @torch.inference_mode()
+    def mm_embedding(
+        self,
+        url: Optional[Union[str, List[str]]] = None,  # Ignored
+        mm_type: Union[MMUrlType, List[MMUrlType]] = MMUrlType.DEFAULT,
+        data: Optional[Union[bytes, List[bytes]]] = None,
+        tensors: Optional[List[torch.Tensor]] = None,
+        configs: Optional[List[Any]] = None,
+        **kwargs: Any,
+    ):
+        dtype = self._data_type
+        if g_parallel_info.tp_rank > 0:
+            return (torch.Tensor([]), None)
+
+        if isinstance(mm_type, list):
+            input_types = mm_type
+        else:
+            input_types = [mm_type]
+
+        if data is not None:
+            input_datas = data if isinstance(data, list) else [data]
+        else:
+            input_datas = [None] * len(input_types)
+
+        if configs is None:
+            configs = [None] * len(input_types)
+
+        assert len(input_types) == len(
+            input_datas
+        ), f"mm_type and data length mismatch: {len(input_types)} vs {len(input_datas)}"
+
+        mm_inputs = []
+        for t, d, cfg in zip(input_types, input_datas, configs):
+            mm_inputs.append(
+                self._mm_preprocess(mm_type=t, data=d, config=cfg, **kwargs)
+            )
+
+        with mm_lock:
+            features_batch = self.mm_process(mm_inputs, mm_type=mm_type, **kwargs)
+
+        processed_results = []
+        for feat in features_batch:
+            if isinstance(feat, list):
+                tensor = torch.cat(feat, dim=0)
+            else:
+                tensor = feat
+
+            if isinstance(tensor, torch.Tensor):
+                tensor = tensor.to(dtype).contiguous()
+            processed_results.append(tensor)
+
+        if isinstance(mm_type, list):
+            return (processed_results, None)
+        else:
+            if not processed_results:
+                return (torch.tensor([]).to(dtype), None)
+            return (processed_results[0], None)
+
+    @timeout_decorator(30)
+    def _mm_preprocess(
+        self, mm_type: MMUrlType, data: Optional[bytes] = None, **kwargs: Any
+    ):
+        if data is not None:
+            return data
+
+        return b""
+
+    @torch.inference_mode()
+    def mm_process(self, mm_input, **kwargs):
+        return self.custom_modal_embedding(mm_input)
+
+    @torch.inference_mode()
+    def mm_preprocess(self, mm_input, **kwargs):
+        return self.custom_modal_preprocess(mm_input)
+
+    @torch.inference_mode()
+    def custom_modal_embedding(self, batch_data: Any):
         raise NotImplementedError()
