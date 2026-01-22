@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import dataclass, field
 from functools import partial
 from typing import AsyncGenerator, List, Optional
 
@@ -14,7 +15,9 @@ from rtp_llm.openai.api_datatype import (
     ChatCompletionResponseChoice,
     ChatCompletionStreamResponse,
     ChatMessage,
+    ChoiceLogprobs,
     DebugInfo,
+    FinisheReason,
     FunctionCall,
     ModelCard,
     ModelList,
@@ -35,6 +38,20 @@ from rtp_llm.server.backend_rpc_server_visitor import BackendRPCServerVisitor
 from rtp_llm.utils.complete_response_async_generator import (
     CompleteResponseAsyncGenerator,
 )
+
+
+@dataclass
+class _ChoiceBuffer:
+    """Buffer to accumulate stream chunks without Pydantic overhead."""
+    index: int
+    content_parts: List[str] = field(default_factory=list)
+    reasoning_parts: List[str] = field(default_factory=list)
+    role: Optional[RoleEnum] = None
+    function_call: Optional[FunctionCall] = None
+    tool_calls: Optional[List[ToolCall]] = None
+    finish_reason: Optional[FinisheReason] = None
+    logprobs_content: List = field(default_factory=list)
+    first_logprobs: Optional[ChoiceLogprobs] = None
 
 
 class OpenaiEndpoint(object):
@@ -249,75 +266,94 @@ class OpenaiEndpoint(object):
         choice_generator: Optional[AsyncGenerator[StreamResponseObject, None]],
         debug_info: Optional[DebugInfo],
     ) -> ChatCompletionResponse:
-        all_choices = []
+        buffers: List[_ChoiceBuffer] = []
         usage = None
         aux_info = None
         extra_outputs = None
+
         async for response in choice_generator:
-            if len(response.choices) != len(all_choices):
-                if all_choices == []:
-                    all_choices = [
-                        ChatCompletionResponseChoice(
-                            index=i,
-                            message=ChatMessage(
-                                role=choice.delta.role or RoleEnum.assistant,
-                                content=choice.delta.content or None,
-                                function_call=choice.delta.function_call or None,
-                                tool_calls=choice.delta.tool_calls or None,
-                            ),
-                            finish_reason=choice.finish_reason,
-                            logprobs=choice.logprobs,
-                        )
-                        for i, choice in enumerate(response.choices)
-                    ]
-                else:
-                    raise ValueError(
-                        f"response.choices has different length! "
-                        f"[{response.choices}] vs [{all_choices}]."
+            if not buffers:
+                # Initialize buffers based on the first response
+                buffers = [_ChoiceBuffer(index=i) for i in range(len(response.choices))]
+            elif len(response.choices) != len(buffers):
+                raise ValueError(
+                    f"response.choices has different length! "
+                    f"[{len(response.choices)}] vs [{len(buffers)}]."
+                )
+            
+            for i, choice in enumerate(response.choices):
+                buf = buffers[i]
+                delta = choice.delta
+
+                if delta.content:
+                    buf.content_parts.append(delta.content)
+                
+                if delta.reasoning_content:
+                    buf.reasoning_parts.append(delta.reasoning_content)
+                
+                if delta.role:
+                    buf.role = delta.role
+                
+                if delta.function_call:
+                    buf.function_call = delta.function_call
+                
+                if delta.tool_calls:
+                    buf.tool_calls = self._merge_tool_calls(
+                        buf.tool_calls, delta.tool_calls
                     )
-            else:
-                for i in range(len(all_choices)):
-                    if all_choices[i].message.content == None:
-                        all_choices[i].message.content = (
-                            response.choices[i].delta.content or None
-                        )
-                    else:
-                        all_choices[i].message.content += (
-                            response.choices[i].delta.content or ""
-                        )
-                    if all_choices[i].message.reasoning_content == None:
-                        all_choices[i].message.reasoning_content = (
-                            response.choices[i].delta.reasoning_content or None
-                        )
-                    else:
-                        all_choices[i].message.reasoning_content += (
-                            response.choices[i].delta.reasoning_content or ""
-                        )
-                    all_choices[i].message.role = (
-                        response.choices[i].delta.role or all_choices[i].message.role
-                    )
-                    all_choices[i].message.function_call = (
-                        response.choices[i].delta.function_call
-                        or all_choices[i].message.function_call
-                    )
-                    all_choices[i].message.tool_calls = self._merge_tool_calls(
-                        all_choices[i].message.tool_calls,
-                        response.choices[i].delta.tool_calls,
-                    )
-                    all_choices[i].finish_reason = (
-                        response.choices[i].finish_reason
-                        or all_choices[i].finish_reason
-                    )
-                    if all_choices[i].logprobs != None:
-                        if response.choices[i].logprobs != None:
-                            all_choices[i].logprobs.content += response.choices[
-                                i
-                            ].logprobs.content
-                    else:
-                        all_choices[i].logprobs = response.choices[i].logprobs
+                
+                if choice.finish_reason:
+                    buf.finish_reason = choice.finish_reason
+                
+                # Handle logprobs
+                if choice.logprobs:
+                    if buf.first_logprobs is None:
+                        buf.first_logprobs = choice.logprobs
+                    
+                    if choice.logprobs.content:
+                        buf.logprobs_content.extend(choice.logprobs.content)
+
             usage = response.usage or usage
             aux_info = response.aux_info or aux_info
             extra_outputs = response.extra_outputs or extra_outputs
+
+        # Convert buffers to Pydantic objects once at the end
+        all_choices = []
+        for buf in buffers:
+            # Construct logprobs object if needed
+            logprobs_obj = None
+            if buf.first_logprobs:
+                # Use the first logprobs object as a base (to keep refusal/extra fields)
+                # and update its content with the accumulated list.
+                # model_copy is a Pydantic V2 method, for V1 use copy(update={...})
+                # Assuming Pydantic V2 based on context, but checking V1 compat just in case.
+                # If model_copy is not available, we can fallback to manual construction.
+                # Given 'from pydantic import BaseModel', let's assume standard API.
+                try:
+                    logprobs_obj = buf.first_logprobs.model_copy()
+                    logprobs_obj.content = buf.logprobs_content if buf.logprobs_content else None
+                except AttributeError:
+                    # Fallback for Pydantic V1
+                    logprobs_obj = buf.first_logprobs.copy()
+                    logprobs_obj.content = buf.logprobs_content if buf.logprobs_content else None
+
+            # Construct message
+            message = ChatMessage(
+                role=buf.role or RoleEnum.assistant,
+                content=''.join(buf.content_parts) if buf.content_parts else None,
+                reasoning_content=''.join(buf.reasoning_parts) if buf.reasoning_parts else None,
+                function_call=buf.function_call,
+                tool_calls=buf.tool_calls,
+            )
+
+            all_choices.append(
+                ChatCompletionResponseChoice(
+                    index=buf.index,
+                    message=message,
+                    finish_reason=buf.finish_reason,
+                    logprobs=logprobs_obj,
+                )
+            )
 
         if usage == None:
             logging.warning(f"No usage returned from stream response. use empty value.")
