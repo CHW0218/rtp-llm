@@ -37,7 +37,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
         self.wrapped_renderer = wrapped_renderer
         self.custom_modal_config = renderer_params.custom_modal_config
         self.custom_preprocessor = self._load_custom_preprocessor()
-        print(f"CustomModalProxyRenderer wrapping {type(wrapped_renderer).__name__}", flush=True)
 
     def _load_custom_preprocessor(self):
         try:
@@ -77,15 +76,8 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                             raise RuntimeError(
                                 "Custom preprocessor is not loaded. Please check if the custom modal module path is correct and the module exists in the checkpoint directory."
                             )
-                        data_len = (
-                            len(part.data)
-                            if hasattr(part.data, "__len__")
-                            else "unknown"
-                        )
-                        print(f"DEBUG: Found custom content part. Data length: {data_len}", flush=True)
                         mm_type = MMUrlType.CUSTOM
                         tensors = self.custom_preprocessor(part.data)
-                        print(f"DEBUG: custom_preproceor returned {len(tensors)} tensors.", flush=True)
                         mm_input = MultimodalInput(
                             url="",  # URL is unused for custom bytes transfer
                             mm_type=mm_type,
@@ -106,16 +98,6 @@ class CustomModalProxyRenderer(CustomChatRenderer):
                         final_multimodal_inputs.append(None)
                         new_content_list.append(part)
                     else:
-                        data_summary = "None"
-                        if hasattr(part, "data") and part.data:
-                            data_len = (
-                                len(part.data)
-                                if hasattr(part.data, "__len__")
-                                else "unknown"
-                            )
-                            data_summary = f"present(len={data_len})"
-                            
-                        print(f"DEBUG: Processing standard part as text/other. Type: {part.type}, Data: {data_summary}", flush=True)
                         # Text or other types do not consume multimodal slots
                         new_content_list.append(part)
                 message.content = new_content_list
