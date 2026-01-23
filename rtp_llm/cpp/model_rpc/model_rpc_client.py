@@ -386,6 +386,8 @@ class ModelRpcClient(object):
         self.model_config = config
         self._options = [
             ("grpc.max_metadata_size", 1024 * 1024 * 1024),
+            ("grpc.max_send_message_length", 1024 * 1024 * 1024),
+            ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
         ]
         logging.info(f"client options: {self._options}")
 
